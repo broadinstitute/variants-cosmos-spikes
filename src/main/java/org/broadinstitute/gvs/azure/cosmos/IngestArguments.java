@@ -44,7 +44,8 @@ public class IngestArguments {
     @Parameter(names = {"--num-progress"}, description = "Max number of records to load between progress messages")
     private Long numProgress = 10000L;
 
-    public void setMaxRecordsPerDocument(Long maxRecordsPerDocument) {
+    @VisibleForTesting
+    void setMaxRecordsPerDocument(Long maxRecordsPerDocument) {
         this.maxRecordsPerDocument = maxRecordsPerDocument;
     }
 
@@ -63,6 +64,9 @@ public class IngestArguments {
         return args;
     }
 
+    /**
+     * For testing only, does not set values for the required container, database, or avro directory parameters.
+     */
     @VisibleForTesting
     static IngestArguments dummyForTesting() {
         return new IngestArguments();
