@@ -13,7 +13,7 @@ public class AvroReaderTest {
 
     @Test
     public void testFindAvroFiles() {
-        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources");
+        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets");
         Assert.assertEquals(avroFiles.size(), 1);
 
     }
@@ -42,11 +42,36 @@ public class AvroReaderTest {
                     "call_PL": "72,7,0,72,7,72"
                 }
                 """.trim();
-        AtomicLong id = new AtomicLong(0L);
-        ObjectNode objectNode = AvroReader.objectNodeFromString(objectMapper, stringJson, id);
-        Assert.assertEquals(id.get(), 1L);
+        ObjectNode objectNode = AvroReader.objectNodeFromAvroRecord(objectMapper, stringJson);
 
-        Assert.assertEquals(objectNode.get("id").asText(), String.valueOf(1L));
         Assert.assertEquals(objectNode.get("sample_id").asLong(), 7L);
+    }
+
+    @Test
+    public void testObjectNodesForAvroPath() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets");
+
+        IngestArguments ingestArguments = IngestArguments.dummyForTesting();
+        Assert.assertEquals(ingestArguments.getMaxRecordsPerDocument(), 10000L);
+
+        List<ObjectNode> objectNodes = AvroReader.objectNodesForAvroPath(
+                objectMapper, avroFiles.get(0), ingestArguments);
+
+        Assert.assertEquals(objectNodes.size(), 2);
+        Assert.assertEquals(objectNodes.get(0).get("entries").size(), 88);
+        Assert.assertEquals(objectNodes.get(1).get("entries").size(), 12);
+
+        ingestArguments.setMaxRecordsPerDocument(10L);
+        objectNodes = AvroReader.objectNodesForAvroPath(
+                objectMapper, avroFiles.get(0), ingestArguments);
+
+        Assert.assertEquals(objectNodes.size(), 11);
+        for (int i = 0; i < 8; i++) {
+            Assert.assertEquals(objectNodes.get(i).get("entries").size(), 10);
+        }
+        Assert.assertEquals(objectNodes.get(8).get("entries").size(), 8);
+        Assert.assertEquals(objectNodes.get(9).get("entries").size(), 10);
+        Assert.assertEquals(objectNodes.get(10).get("entries").size(), 2);
     }
 }
