@@ -3,7 +3,6 @@ package org.broadinstitute.gvs.azure.cosmos;
 import com.azure.cosmos.models.CosmosBulkOperations;
 import com.azure.cosmos.models.CosmosItemOperation;
 import com.azure.cosmos.models.PartitionKey;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.IntNode;
@@ -21,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -49,19 +49,12 @@ public class AvroReader {
         }
 
         // If the record does not represent a reference block it must represent a variant.
-        // There can be multiple alts separated by commas, find the longest and the shortest.
+        // We could be looking at a SNP, insertion, or deletion. There can be multiple alts separated by commas, find
+        // the longest and the shortest.
         long refLength = record.get("ref").asText().length();
-        String [] alts = record.get("alt").asText().split(",");
-        long maxAltLength = Long.MIN_VALUE;
-        long minAltLength = Long.MAX_VALUE;
-        for (String alt : alts) {
-            if (alt.length() > maxAltLength) {
-                maxAltLength = alt.length();
-            }
-            if (alt.length() < minAltLength) {
-                minAltLength = alt.length();
-            }
-        }
+        Object[] sortedAltLengths = Arrays.stream(record.get("alt").asText().split(",")).map(String::length).sorted().toArray();
+        int minAltLength = (Integer) sortedAltLengths[0];
+        int maxAltLength = (Integer) sortedAltLengths[sortedAltLengths.length - 1];
 
         long delta = Math.max(Math.abs(refLength - maxAltLength), Math.abs(refLength - minAltLength));
 
