@@ -94,8 +94,8 @@ public class AvroReader {
                         currentArrayNode.add(objectNodeForAvroRecord);
                         currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(objectNodeForAvroRecord));
                     } else {
-                        // Write the end location for the now-completed document.
                         if (currentDocument != null) {
+                            // Write the end location for the now-completed document.
                             ObjectNode location = (ObjectNode) currentDocument.get("location");
                             location.set("end", new LongNode(currentMaxLocation));
                         }
@@ -123,6 +123,9 @@ public class AvroReader {
                     }
                     if (counter % ingestArguments.getNumProgress() == 0L) logger.info(counter + "...");
                 }
+                // Write the end location for the now-completed document.
+                ObjectNode location = (ObjectNode) currentDocument.get("location");
+                location.set("end", new LongNode(currentMaxLocation));
             }
             return documentList;
         } catch (IOException e) {

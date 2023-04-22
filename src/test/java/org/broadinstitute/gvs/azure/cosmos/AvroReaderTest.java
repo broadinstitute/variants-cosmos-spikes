@@ -131,7 +131,9 @@ public class AvroReaderTest {
 
         Assert.assertEquals(objectNodes.size(), 2);
         Assert.assertEquals(objectNodes.get(0).get("entries").size(), 88);
+        Assert.assertNotNull(objectNodes.get(0).get("location").get("end"));
         Assert.assertEquals(objectNodes.get(1).get("entries").size(), 12);
+        Assert.assertNotNull(objectNodes.get(1).get("location").get("end"));
 
         String[] args = Arrays.copyOf(dummyArgvForTesting, dummyArgvForTesting.length + 2);
         args[dummyArgvForTesting.length] = "--max-records-per-document";
@@ -145,9 +147,15 @@ public class AvroReaderTest {
         Assert.assertEquals(objectNodes.size(), 11);
         for (int i = 0; i < 8; i++) {
             Assert.assertEquals(objectNodes.get(i).get("entries").size(), 10);
+            Assert.assertNotNull(objectNodes.get(i).get("location").get("end"));
         }
         Assert.assertEquals(objectNodes.get(8).get("entries").size(), 8);
+        Assert.assertNotNull(objectNodes.get(8).get("location").get("end"));
+
         Assert.assertEquals(objectNodes.get(9).get("entries").size(), 10);
+        Assert.assertNotNull(objectNodes.get(9).get("location").get("end"));
+
         Assert.assertEquals(objectNodes.get(10).get("entries").size(), 2);
+        Assert.assertNotNull(objectNodes.get(10).get("location").get("end"));
     }
 }
