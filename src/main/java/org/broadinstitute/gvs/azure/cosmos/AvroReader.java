@@ -75,14 +75,14 @@ public class AvroReader {
         List<ObjectNode> documentList = new ArrayList<>();
         ObjectNode currentDocument = null;
         ArrayNode currentArrayNode = null;
-        String currentSampleId = null;
+        Long currentSampleId = null;
 
         try {
             try (DataFileReader<?> dataFileReader = new DataFileReader<>(file, reader)) {
                 for (Object record : dataFileReader) {
                     counter = counter + 1L;
                     ObjectNode objectNodeForAvroRecord = (ObjectNode) objectMapper.readTree(record.toString());
-                    String sampleId = objectNodeForAvroRecord.get("sample_id").asText();
+                    Long sampleId = objectNodeForAvroRecord.get("sample_id").asLong();
                     if (sampleId.equals(currentSampleId) && currentArrayNode.size() < ingestArguments.getMaxRecordsPerDocument()) {
                         currentArrayNode.add(objectNodeForAvroRecord);
                         currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(objectNodeForAvroRecord));
@@ -97,8 +97,8 @@ public class AvroReader {
                         id = id + 1;
                         String jsonTemplate = """
                                 {
-                                     "id": %d,
-                                     "sample_id" : "%s",
+                                     "id": "%d",
+                                     "sample_id" : %d,
                                      "location" : {
                                          "start" : %d
                                      },
