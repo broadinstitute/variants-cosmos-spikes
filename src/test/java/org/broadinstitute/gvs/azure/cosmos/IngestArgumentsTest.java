@@ -33,14 +33,20 @@ public class IngestArgumentsTest {
         Assert.assertEquals(args.getDatabase(), "mydatabase");
         Assert.assertEquals(args.getNumRecords(), Long.MAX_VALUE);
         Assert.assertEquals(args.getNumProgress(), 10000L);
+        Assert.assertEquals(args.getNumProgress(), 10000L);
+        Assert.assertEquals(args.getNumProgress(), 10000L);
+        Assert.assertEquals(args.getMaxRecordsPerDocument(), 10000L);
     }
 
     public void validInvocationWithOverrides() {
         IngestArguments args = IngestArguments.parseArgs(
-                new String[] {"--container", "mycontainer", "--database", "mydatabase", "--avro-dir", "myavros", "--num-records", "99999", "--num-progress", "99"});
+                new String[] {
+                        "--container", "mycontainer", "--database", "mydatabase", "--avro-dir", "myavros",
+                        "--num-records", "99999", "--num-progress", "99", "--max-records-per-document", "999"});
         Assert.assertEquals(args.getContainer(), "mycontainer");
         Assert.assertEquals(args.getDatabase(), "mydatabase");
         Assert.assertEquals(args.getNumRecords(), 99999L);
         Assert.assertEquals(args.getNumProgress(), 99L);
+        Assert.assertEquals(args.getMaxRecordsPerDocument(), 999L);
     }
 }

@@ -2,6 +2,7 @@ package org.broadinstitute.gvs.azure.cosmos;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
+import com.google.common.annotations.VisibleForTesting;
 
 public class IngestArguments {
     public String getDatabase() {
@@ -24,6 +25,10 @@ public class IngestArguments {
         return avroDir;
     }
 
+    public Long getMaxRecordsPerDocument() {
+        return maxRecordsPerDocument;
+    }
+
     @Parameter(names = {"--database"}, description = "Cosmos database", required = true)
     private String database;
 
@@ -39,6 +44,13 @@ public class IngestArguments {
     @Parameter(names = {"--num-progress"}, description = "Max number of records to load between progress messages")
     private Long numProgress = 10000L;
 
+    public void setMaxRecordsPerDocument(Long maxRecordsPerDocument) {
+        this.maxRecordsPerDocument = maxRecordsPerDocument;
+    }
+
+    @Parameter(names = {"--max-records-per-document"}, description = "Max number of records to include within a single Cosmos document")
+    private Long maxRecordsPerDocument = 10000L;
+
     private IngestArguments() {
     }
 
@@ -49,5 +61,10 @@ public class IngestArguments {
                 build().
                 parse(argv);
         return args;
+    }
+
+    @VisibleForTesting
+    static IngestArguments dummyForTesting() {
+        return new IngestArguments();
     }
 }

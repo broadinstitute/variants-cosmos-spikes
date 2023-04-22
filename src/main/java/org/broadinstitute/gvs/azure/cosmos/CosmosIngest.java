@@ -25,29 +25,25 @@ public class CosmosIngest {
     public static void main(String [] argv) {
         configureLogging();
         CosmosEndpointAndKey endpointAndKey = CosmosEndpointAndKey.fromEnvironment();
-        IngestArguments args = IngestArguments.parseArgs(argv);
-        List<Path> avroPaths = AvroReader.findAvroPaths(args.getAvroDir());
+        IngestArguments ingestArguments = IngestArguments.parseArgs(argv);
+        List<Path> avroPaths = AvroReader.findAvroPaths(ingestArguments.getAvroDir());
 
         try (CosmosAsyncClient client = buildClient(endpointAndKey)) {
             CosmosAsyncContainer container = client.
-                    getDatabase(args.getDatabase()).
-                    getContainer(args.getContainer());
+                    getDatabase(ingestArguments.getDatabase()).
+                    getContainer(ingestArguments.getContainer());
 
-            loadAvros(container, avroPaths, args.getNumRecords(), args.getNumProgress());
+            loadAvros(container, avroPaths, ingestArguments);
         }
     }
 
-    public static void loadAvros(CosmosAsyncContainer container, Iterable<Path> avroPaths,
-                                 Long numRecordsToLoad, Long numRecordsProgress) {
-        // There can occasionally be 409 race conditions on `id` if using a regular `Long` so go atomic!
-        AtomicLong id = new AtomicLong(0L);
-
+    public static void loadAvros(CosmosAsyncContainer container, Iterable<Path> avroPaths, IngestArguments ingestArguments) {
         ObjectMapper objectMapper = new ObjectMapper();
 
         for (Path avroPath : avroPaths) {
             logger.info(String.format("Processing Avro file '%s'...", avroPath));
             Flux<CosmosItemOperation> itemFlux =
-                    AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, id, numRecordsProgress, numRecordsToLoad);
+                    AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments);
             executeItemOperationsWithErrorHandling(container, itemFlux);
             logger.info(String.format("Avro file '%s' processing complete.", avroPath));
         }
