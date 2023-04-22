@@ -135,15 +135,8 @@ public class AvroReader {
 
     public static Flux<CosmosItemOperation> itemFluxFromAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments) {
         List<ObjectNode> documentList = objectNodesForAvroPath(objectMapper, path, ingestArguments);
-        return Flux.fromIterable(documentList).
-                map(document -> {
-                    try {
-                        ObjectNode objectNode = (ObjectNode) objectMapper.readTree(document.toString());
-                        return CosmosBulkOperations.getCreateItemOperation(
-                                objectNode, new PartitionKey(objectNode.get("sample_id").longValue()));
-                    } catch (JsonProcessingException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        return Flux.fromIterable(documentList).map(
+                document -> CosmosBulkOperations.getCreateItemOperation(
+                        document, new PartitionKey(document.get("sample_id").longValue())));
     }
 }
