@@ -1,5 +1,6 @@
 package org.broadinstitute.gvs.azure.cosmos;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.testng.Assert;
@@ -8,8 +9,8 @@ import org.testng.annotations.Test;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
+@Test
 public class AvroReaderTest {
 
     private static final String[] dummyArgvForTesting = {
@@ -18,14 +19,104 @@ public class AvroReaderTest {
             "--avro-dir", "dummy-avro-dir"
     };
 
-    @Test
     public void testFindAvroFiles() {
         List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets");
         Assert.assertEquals(avroFiles.size(), 1);
-
     }
 
-    @Test
+    public void testEndLocationVet() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String jsonString;
+        ObjectNode json;
+
+        try {
+            // Single alt SNP
+            jsonString = """
+                    {
+                        "sample_id": "1",
+                        "location": 1000000000000,
+                        "ref": "A",
+                        "alt": "C"
+                    }
+                    """;
+
+            json = (ObjectNode) objectMapper.readTree(jsonString);
+            Assert.assertEquals(AvroReader.calculateEndLocation(json), 1000000000000L);
+
+            // Single alt INDEL
+            jsonString = """
+                    {
+                        "sample_id": "1",
+                        "location": 1000000000000,
+                        "ref": "A",
+                        "alt": "CT"
+                    }
+                    """;
+            json = (ObjectNode) objectMapper.readTree(jsonString);
+            Assert.assertEquals(AvroReader.calculateEndLocation(json), 1000000000001L);
+
+            // Multiple alt SNP
+            jsonString = """
+                    {
+                        "sample_id": "1",
+                        "location": 1000000000000,
+                        "ref": "A",
+                        "alt": "C,T"
+                    }
+                    """;
+
+            json = (ObjectNode) objectMapper.readTree(jsonString);
+            Assert.assertEquals(AvroReader.calculateEndLocation(json), 1000000000000L);
+
+            // Multiple alt insertion
+            jsonString = """
+                    {
+                        "sample_id": "1",
+                        "location": 1000000000000,
+                        "ref": "A",
+                        "alt": "CC,TTT"
+                    }
+                    """;
+            json = (ObjectNode) objectMapper.readTree(jsonString);
+            Assert.assertEquals(AvroReader.calculateEndLocation(json), 1000000000002L);
+
+            // Multiple alt deletion
+            jsonString = """
+                    {
+                        "sample_id": "1",
+                        "location": 1000000000000,
+                        "ref": "AAAA",
+                        "alt": "C,TT,GGG"
+                    }
+                    """;
+            json = (ObjectNode) objectMapper.readTree(jsonString);
+            Assert.assertEquals(AvroReader.calculateEndLocation(json), 1000000000003L);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void testEndLocationRefRanges() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        String jsonString;
+        ObjectNode json;
+
+        try {
+            jsonString = """
+                    {
+                        "sample_id": "1",
+                        "location": 1000000000000,
+                        "length": 12
+                    }
+                    """;
+
+            json = (ObjectNode) objectMapper.readTree(jsonString);
+            Assert.assertEquals(AvroReader.calculateEndLocation(json), 1000000000011L);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public void testObjectNodesForAvroPath() {
         ObjectMapper objectMapper = new ObjectMapper();
         IngestArguments ingestArguments;
@@ -42,7 +133,7 @@ public class AvroReaderTest {
         Assert.assertEquals(objectNodes.get(0).get("entries").size(), 88);
         Assert.assertEquals(objectNodes.get(1).get("entries").size(), 12);
 
-        String [] args = Arrays.copyOf(dummyArgvForTesting, dummyArgvForTesting.length + 2);
+        String[] args = Arrays.copyOf(dummyArgvForTesting, dummyArgvForTesting.length + 2);
         args[dummyArgvForTesting.length] = "--max-records-per-document";
         args[dummyArgvForTesting.length + 1] = "10";
 

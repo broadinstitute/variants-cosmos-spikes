@@ -4,9 +4,10 @@ import com.azure.cosmos.models.CosmosBulkOperations;
 import com.azure.cosmos.models.CosmosItemOperation;
 import com.azure.cosmos.models.PartitionKey;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.IntNode;
+import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import org.apache.avro.file.DataFileReader;
@@ -38,6 +39,36 @@ public class AvroReader {
     }
 
     @VisibleForTesting
+    static long calculateEndLocation(ObjectNode record) {
+        LongNode location = (LongNode) record.get("location");
+        IntNode length = (IntNode) record.get("length");
+
+        // Reference block record?
+        if (length != null) {
+            return location.asLong() + length.asLong() - 1;
+        }
+
+        // If the record does not represent a reference block it must represent a variant.
+        // There can be multiple alts separated by commas, find the longest and the shortest.
+        long refLength = record.get("ref").asText().length();
+        String [] alts = record.get("alt").asText().split(",");
+        long maxAltLength = Long.MIN_VALUE;
+        long minAltLength = Long.MAX_VALUE;
+        for (String alt : alts) {
+            if (alt.length() > maxAltLength) {
+                maxAltLength = alt.length();
+            }
+            if (alt.length() < minAltLength) {
+                minAltLength = alt.length();
+            }
+        }
+
+        long delta = Math.max(Math.abs(refLength - maxAltLength), Math.abs(refLength - minAltLength));
+
+        return location.asLong() + delta;
+    }
+
+    @VisibleForTesting
     static List<ObjectNode> objectNodesForAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments) {
         // Where the Cosmos JSON serialization magic happens:
         // https://github.com/Azure/azure-sdk-for-java/blob/80b12e48aeb6ad2f49e86643dfd7223bde7a9a0c/sdk/cosmos/azure-cosmos/src/main/java/com/azure/cosmos/implementation/JsonSerializable.java#L255
@@ -47,7 +78,9 @@ public class AvroReader {
         GenericDatumReader<?> reader = new GenericDatumReader<>();
         long counter = 0L;
         long id = 0L;
+        long currentMaxLocation = -1L;
         List<ObjectNode> documentList = new ArrayList<>();
+        ObjectNode currentDocument = null;
         ArrayNode currentArrayNode = null;
         String currentSampleId = null;
 
@@ -59,7 +92,15 @@ public class AvroReader {
                     String sampleId = objectNodeForAvroRecord.get("sample_id").asText();
                     if (sampleId.equals(currentSampleId) && currentArrayNode.size() < ingestArguments.getMaxRecordsPerDocument()) {
                         currentArrayNode.add(objectNodeForAvroRecord);
+                        currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(objectNodeForAvroRecord));
                     } else {
+                        // Write the end location for the now-completed document.
+                        if (currentDocument != null) {
+                            ObjectNode location = (ObjectNode) currentDocument.get("location");
+                            location.set("end", new LongNode(currentMaxLocation));
+                        }
+
+                        // On to the next document.
                         id = id + 1;
                         String jsonTemplate = """
                                 {
@@ -71,13 +112,14 @@ public class AvroReader {
                                      "entries" : []
                                 }
                                 """;
-                        ObjectNode document = (ObjectNode) objectMapper.readTree(
+                        currentDocument = (ObjectNode) objectMapper.readTree(
                                 String.format(jsonTemplate, id, sampleId, objectNodeForAvroRecord.get("location").asLong()));
-                        documentList.add(document);
+                        documentList.add(currentDocument);
 
-                        currentArrayNode = (ArrayNode) document.get("entries");
+                        currentArrayNode = (ArrayNode) currentDocument.get("entries");
                         currentArrayNode.add(objectNodeForAvroRecord);
                         currentSampleId = sampleId;
+                        currentMaxLocation = calculateEndLocation(objectNodeForAvroRecord);
                     }
                     if (counter % ingestArguments.getNumProgress() == 0L) logger.info(counter + "...");
                 }
