@@ -42,16 +42,16 @@ public class AvroReader {
     @VisibleForTesting
     static long calculateEndLocation(ObjectNode record) {
         LongNode location = (LongNode) record.get("location");
-        IntNode length = (IntNode) record.get("length");
 
-        // Reference block record?
+        // Check if this is a reference block record with a 'length' property:
+        IntNode length = (IntNode) record.get("length");
         if (length != null) {
             return location.asLong() + length.asLong() - 1;
         }
 
-        // If the record does not represent a reference block it must represent a variant.
-        // We could be looking at a SNP, insertion, or deletion. There can be multiple alts separated by commas, find
-        // the longest and the shortest.
+        // If the record does not represent a reference block it must represent a variant. This could be a SNP,
+        // insertion, or deletion. There can be multiple alts separated by commas, find the longest and the shortest to
+        // compare with the length of the ref to determine the span of affected bases.
         long refLength = record.get("ref").asText().length();
         Object[] sortedAltLengths = Arrays.stream(record.get("alt").asText().split(",")).map(String::length).sorted().toArray();
         int minAltLength = (Integer) sortedAltLengths[0];
