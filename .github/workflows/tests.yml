@@ -1,4 +1,4 @@
-name: Build and Test Variants Cosmos DB Spikes
+name: Build and test
 on:
   push:
     branches:
@@ -9,6 +9,7 @@ on:
 
 jobs:
   test:
+    name: 'Build and test'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
