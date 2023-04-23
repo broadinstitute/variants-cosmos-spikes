@@ -63,14 +63,14 @@ public class AvroReader {
     }
 
     @VisibleForTesting
-    static List<ObjectNode> objectNodesForAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id) {
+    static List<ObjectNode> objectNodesForAvroPath(
+            ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
         // Where the Cosmos JSON serialization magic happens:
         // https://github.com/Azure/azure-sdk-for-java/blob/80b12e48aeb6ad2f49e86643dfd7223bde7a9a0c/sdk/cosmos/azure-cosmos/src/main/java/com/azure/cosmos/implementation/JsonSerializable.java#L255
         //
 
         File file = new File(path.toString());
         GenericDatumReader<?> reader = new GenericDatumReader<>();
-        long counter = 0L;
         long currentMaxLocation = -1L;
         List<ObjectNode> documentList = new ArrayList<>();
         ObjectNode currentDocument = null;
@@ -80,7 +80,7 @@ public class AvroReader {
         try {
             try (DataFileReader<?> dataFileReader = new DataFileReader<>(file, reader)) {
                 for (Object record : dataFileReader) {
-                    counter = counter + 1L;
+                    Long longCounter = counter.incrementAndGet();
                     ObjectNode objectNodeForAvroRecord = (ObjectNode) objectMapper.readTree(record.toString());
                     Long sampleId = objectNodeForAvroRecord.get("sample_id").asLong();
                     if (sampleId.equals(currentSampleId) && currentArrayNode.size() < ingestArguments.getMaxRecordsPerDocument()) {
@@ -114,7 +114,7 @@ public class AvroReader {
                         currentSampleId = sampleId;
                         currentMaxLocation = calculateEndLocation(objectNodeForAvroRecord);
                     }
-                    if (counter % ingestArguments.getNumProgress() == 0L) logger.info(counter + "...");
+                    if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
                 }
                 // Write the end location for the now-completed document.
                 ObjectNode location = (ObjectNode) currentDocument.get("location");
@@ -126,8 +126,9 @@ public class AvroReader {
         }
     }
 
-    public static Flux<CosmosItemOperation> itemFluxFromAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id) {
-        List<ObjectNode> documentList = objectNodesForAvroPath(objectMapper, path, ingestArguments, id);
+    public static Flux<CosmosItemOperation> itemFluxFromAvroPath(
+            ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
+        List<ObjectNode> documentList = objectNodesForAvroPath(objectMapper, path, ingestArguments, id, counter);
         return Flux.fromIterable(documentList).map(
                 document -> CosmosBulkOperations.getCreateItemOperation(
                         document, new PartitionKey(document.get("sample_id").longValue())));
