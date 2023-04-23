@@ -50,16 +50,13 @@ public class AvroReader {
         }
 
         // If the record does not represent a reference block it must represent a variant. This could be a SNP,
-        // insertion, or deletion. There can be multiple alts separated by commas, find the longest and the shortest to
-        // compare with the length of the ref to determine the span of affected bases.
+        // insertion, or deletion. There can be multiple alts separated by commas, find the longest to compare with the
+        // length of the ref to get the range of bases covered by this variant.
         long refLength = record.get("ref").asText().length();
         Object[] sortedAltLengths = Arrays.stream(record.get("alt").asText().split(",")).map(String::length).sorted().toArray();
-        int minAltLength = (Integer) sortedAltLengths[0];
         int maxAltLength = (Integer) sortedAltLengths[sortedAltLengths.length - 1];
 
-        long delta = Math.max(Math.abs(refLength - maxAltLength), Math.abs(refLength - minAltLength));
-
-        return location.asLong() + delta;
+        return location.asLong() + Math.max(refLength, maxAltLength) - 1;
     }
 
     @VisibleForTesting
