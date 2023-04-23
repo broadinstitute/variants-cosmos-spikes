@@ -122,6 +122,7 @@ public class AvroReaderTest {
         ObjectMapper objectMapper = new ObjectMapper();
         IngestArguments ingestArguments;
         AtomicLong id = new AtomicLong();
+        AtomicLong counter = new AtomicLong();
 
         List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets");
 
@@ -129,7 +130,7 @@ public class AvroReaderTest {
         Assert.assertEquals(ingestArguments.getMaxRecordsPerDocument(), 10000L);
 
         List<ObjectNode> objectNodes = AvroReader.objectNodesForAvroPath(
-                objectMapper, avroFiles.get(0), ingestArguments, id);
+                objectMapper, avroFiles.get(0), ingestArguments, id, counter);
 
         Assert.assertEquals(objectNodes.size(), 2);
         Assert.assertEquals(objectNodes.get(0).get("entries").size(), 88);
@@ -146,7 +147,7 @@ public class AvroReaderTest {
         id = new AtomicLong();
 
         objectNodes = AvroReader.objectNodesForAvroPath(
-                objectMapper, avroFiles.get(0), ingestArguments, id);
+                objectMapper, avroFiles.get(0), ingestArguments, id, counter);
 
         Assert.assertEquals(objectNodes.size(), 11);
         for (int i = 0; i < 8; i++) {

@@ -41,7 +41,7 @@ public class IngestArguments {
     private Long numRecords = Long.MAX_VALUE;
 
     @Parameter(names = {"--num-progress"}, description = "Max number of records to load between progress messages")
-    private Long numProgress = 10000L;
+    private Long numProgress = 100000L;
 
 
     @Parameter(names = {"--max-records-per-document"}, description = "Max number of records to include within a single Cosmos document")

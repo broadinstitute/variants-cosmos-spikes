@@ -32,7 +32,7 @@ public class IngestArgumentsTest {
         Assert.assertEquals(args.getContainer(), "mycontainer");
         Assert.assertEquals(args.getDatabase(), "mydatabase");
         Assert.assertEquals(args.getNumRecords(), Long.MAX_VALUE);
-        Assert.assertEquals(args.getNumProgress(), 10000L);
+        Assert.assertEquals(args.getNumProgress(), 100000L);
         Assert.assertEquals(args.getMaxRecordsPerDocument(), 10000L);
     }
 
