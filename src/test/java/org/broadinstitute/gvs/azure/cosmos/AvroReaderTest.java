@@ -9,6 +9,7 @@ import org.testng.annotations.Test;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Test
 public class AvroReaderTest {
@@ -120,6 +121,7 @@ public class AvroReaderTest {
     public void testObjectNodesForAvroPath() {
         ObjectMapper objectMapper = new ObjectMapper();
         IngestArguments ingestArguments;
+        AtomicLong id = new AtomicLong();
 
         List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets");
 
@@ -127,7 +129,7 @@ public class AvroReaderTest {
         Assert.assertEquals(ingestArguments.getMaxRecordsPerDocument(), 10000L);
 
         List<ObjectNode> objectNodes = AvroReader.objectNodesForAvroPath(
-                objectMapper, avroFiles.get(0), ingestArguments);
+                objectMapper, avroFiles.get(0), ingestArguments, id);
 
         Assert.assertEquals(objectNodes.size(), 2);
         Assert.assertEquals(objectNodes.get(0).get("entries").size(), 88);
@@ -141,8 +143,10 @@ public class AvroReaderTest {
 
         ingestArguments = IngestArguments.parseArgs(args);
 
+        id = new AtomicLong();
+
         objectNodes = AvroReader.objectNodesForAvroPath(
-                objectMapper, avroFiles.get(0), ingestArguments);
+                objectMapper, avroFiles.get(0), ingestArguments, id);
 
         Assert.assertEquals(objectNodes.size(), 11);
         for (int i = 0; i < 8; i++) {
