@@ -39,11 +39,12 @@ public class CosmosIngest {
 
     public static void loadAvros(CosmosAsyncContainer container, Iterable<Path> avroPaths, IngestArguments ingestArguments) {
         ObjectMapper objectMapper = new ObjectMapper();
+        AtomicLong id = new AtomicLong();
 
         for (Path avroPath : avroPaths) {
             logger.info(String.format("Processing Avro file '%s'...", avroPath));
             Flux<CosmosItemOperation> itemFlux =
-                    AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments);
+                    AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, id);
             executeItemOperationsWithErrorHandling(container, itemFlux);
             logger.info(String.format("Avro file '%s' processing complete.", avroPath));
         }

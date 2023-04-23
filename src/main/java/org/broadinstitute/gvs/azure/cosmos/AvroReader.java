@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Stream;
 
 public class AvroReader {
@@ -62,7 +63,7 @@ public class AvroReader {
     }
 
     @VisibleForTesting
-    static List<ObjectNode> objectNodesForAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments) {
+    static List<ObjectNode> objectNodesForAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id) {
         // Where the Cosmos JSON serialization magic happens:
         // https://github.com/Azure/azure-sdk-for-java/blob/80b12e48aeb6ad2f49e86643dfd7223bde7a9a0c/sdk/cosmos/azure-cosmos/src/main/java/com/azure/cosmos/implementation/JsonSerializable.java#L255
         //
@@ -70,7 +71,6 @@ public class AvroReader {
         File file = new File(path.toString());
         GenericDatumReader<?> reader = new GenericDatumReader<>();
         long counter = 0L;
-        long id = 0L;
         long currentMaxLocation = -1L;
         List<ObjectNode> documentList = new ArrayList<>();
         ObjectNode currentDocument = null;
@@ -94,7 +94,7 @@ public class AvroReader {
                         }
 
                         // On to the next document.
-                        id = id + 1;
+                        long longId = id.incrementAndGet();
                         String jsonTemplate = """
                                 {
                                      "id": "%d",
@@ -106,7 +106,7 @@ public class AvroReader {
                                 }
                                 """;
                         currentDocument = (ObjectNode) objectMapper.readTree(
-                                String.format(jsonTemplate, id, sampleId, objectNodeForAvroRecord.get("location").asLong()));
+                                String.format(jsonTemplate, longId, sampleId, objectNodeForAvroRecord.get("location").asLong()));
                         documentList.add(currentDocument);
 
                         currentArrayNode = (ArrayNode) currentDocument.get("entries");
@@ -126,8 +126,8 @@ public class AvroReader {
         }
     }
 
-    public static Flux<CosmosItemOperation> itemFluxFromAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments) {
-        List<ObjectNode> documentList = objectNodesForAvroPath(objectMapper, path, ingestArguments);
+    public static Flux<CosmosItemOperation> itemFluxFromAvroPath(ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id) {
+        List<ObjectNode> documentList = objectNodesForAvroPath(objectMapper, path, ingestArguments, id);
         return Flux.fromIterable(documentList).map(
                 document -> CosmosBulkOperations.getCreateItemOperation(
                         document, new PartitionKey(document.get("sample_id").longValue())));
