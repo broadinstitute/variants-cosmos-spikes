@@ -74,6 +74,7 @@ public class AvroReader {
         ArrayNode currentEntryArray = null;
         Long currentSampleId = null;
         ArrayNode schema = null;
+        String dropState = ingestArguments.getDropState();
 
         try {
             try (DataFileReader<?> dataFileReader = new DataFileReader<>(file, reader)) {
@@ -81,6 +82,14 @@ public class AvroReader {
 
                     Long longCounter = counter.incrementAndGet();
                     ObjectNode objectNodeForAvroRecord = (ObjectNode) objectMapper.readTree(record.toString());
+
+                    if (dropState != null) {
+                        String thisDropState = objectNodeForAvroRecord.get("state").asText();
+                        if (thisDropState.equals(dropState)) {
+                            if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
+                            continue;
+                        }
+                    }
                     Long sampleId = objectNodeForAvroRecord.get("sample_id").asLong();
                     optimizeAvroRecord(objectNodeForAvroRecord);
 

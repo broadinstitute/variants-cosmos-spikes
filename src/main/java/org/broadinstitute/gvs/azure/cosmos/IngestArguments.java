@@ -29,6 +29,10 @@ public class IngestArguments {
         return maxRecordsPerDocument;
     }
 
+    public String getDropState() {
+        return dropState;
+    }
+
     @VisibleForTesting
     static final long NUM_PROGRESS = 1000000;
 
@@ -56,6 +60,9 @@ public class IngestArguments {
 
     @Parameter(names = {"--max-records-per-document"}, description = "Maximum number of records to include within a single Cosmos document")
     private Long maxRecordsPerDocument = MAX_RECORDS_PER_DOCUMENT;
+
+    @Parameter(names = {"--drop-state"}, description = "If a record has a 'state' property with this value specified it will be omitted from the containing document")
+    private String dropState;
 
     private IngestArguments() {
     }

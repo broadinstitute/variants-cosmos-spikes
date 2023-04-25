@@ -3,6 +3,7 @@ package org.broadinstitute.gvs.azure.cosmos;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Sets;
 import org.testng.Assert;
@@ -164,6 +165,36 @@ public class AvroReaderTest {
 
         Assert.assertEquals(objectNodes.get(10).get("entries").size(), 2);
         Assert.assertNotNull(objectNodes.get(10).get("location").get("end"));
+    }
+
+    public void testRefRangesWithDropState() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        AtomicLong id = new AtomicLong();
+        AtomicLong counter = new AtomicLong();
+
+        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/ref_ranges");
+
+        String[] argv = Arrays.copyOf(dummyArgvForTesting, dummyArgvForTesting.length + 2);
+        argv[dummyArgvForTesting.length] = "--drop-state";
+        argv[dummyArgvForTesting.length + 1] = "4";
+        IngestArguments ingestArguments = IngestArguments.parseArgs(argv);
+
+        List<ObjectNode> objectNodes = AvroReader.objectNodesForAvroPath(
+                objectMapper, avroFiles.get(0), ingestArguments, id, counter);
+
+        Assert.assertEquals(objectNodes.size(), 2);
+        Assert.assertEquals(counter.get(), 100L);
+        Assert.assertEquals(objectNodes.get(0).get("entries").size(), 49);
+        Assert.assertEquals(objectNodes.get(1).get("entries").size(), 11);
+        for (ObjectNode objectNode : objectNodes) {
+            Iterator<JsonNode> entries = objectNode.get("entries").iterator();
+            // '4' states should have been dropped, we don't expect to see any in this stream.
+            Stream<String> shouldBeDrops = Stream.generate(() -> null)
+                    .takeWhile(x -> entries.hasNext())
+                    .map(n -> entries.next().get("state").asText())
+                    .filter("4"::equals);
+            Assert.assertTrue(shouldBeDrops.findAny().isEmpty());
+        }
     }
 
     @Test
