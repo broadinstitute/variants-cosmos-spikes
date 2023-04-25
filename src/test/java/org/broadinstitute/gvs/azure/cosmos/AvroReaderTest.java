@@ -1,15 +1,17 @@
 package org.broadinstitute.gvs.azure.cosmos;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.Sets;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
 
 @Test
 public class AvroReaderTest {
@@ -162,5 +164,37 @@ public class AvroReaderTest {
 
         Assert.assertEquals(objectNodes.get(10).get("entries").size(), 2);
         Assert.assertNotNull(objectNodes.get(10).get("location").get("end"));
+    }
+
+    @Test
+    public void testOptimizeAvroRecord() throws JsonProcessingException {
+        String unoptimizedString = """
+                {
+                  "sample_id": 1,
+                  "non_null": "something",
+                  "null": null,
+                  "also_non_null": "something else"
+                }
+                """;
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode objectNode = (ObjectNode) mapper.readTree(unoptimizedString);
+
+        Iterator<Map.Entry<String, JsonNode>> beforeFields = objectNode.fields();
+        Set<String> beforeFieldNames = new HashSet<>();
+        Stream.generate(() -> null)
+                .takeWhile(x -> beforeFields.hasNext())
+                .map(n -> beforeFields.next().getKey())
+                .forEach(beforeFieldNames::add);
+        Assert.assertEquals(beforeFieldNames, Set.of("sample_id", "non_null", "null", "also_non_null"));
+
+        AvroReader.optimizeAvroRecord(objectNode);
+        Iterator<Map.Entry<String, JsonNode>> afterFields = objectNode.fields();
+        Set<String> afterFieldNames = new HashSet<>();
+        Stream.generate(() -> null)
+                .takeWhile(x -> afterFields.hasNext())
+                .map(n -> afterFields.next().getKey())
+                .forEach(afterFieldNames::add);
+
+        Assert.assertEquals(afterFieldNames, Set.of("non_null", "also_non_null"));
     }
 }
