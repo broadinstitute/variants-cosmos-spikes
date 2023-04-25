@@ -73,7 +73,7 @@ public class AvroReader {
         ObjectNode currentDocument = null;
         ArrayNode currentEntryArray = null;
         Long currentSampleId = null;
-        ArrayNode schema = null;
+        ArrayNode avroSchema = null;
         String dropState = ingestArguments.getDropState();
 
         try {
@@ -102,8 +102,8 @@ public class AvroReader {
                             ObjectNode location = (ObjectNode) currentDocument.get("location");
                             location.set("end", new LongNode(currentMaxLocation));
                         }
-                        if (schema == null) {
-                            schema = (ArrayNode) objectMapper.readTree(reader.getSchema().toString()).get("fields");
+                        if (avroSchema == null) {
+                            avroSchema = (ArrayNode) objectMapper.readTree(reader.getSchema().toString()).get("fields");
                         }
 
                         // On to the next document.
@@ -115,13 +115,16 @@ public class AvroReader {
                                      "location" : {
                                          "start" : %d
                                      },
+                                     "schema": [],
                                      "entries" : []
                                 }
                                 """;
                         currentDocument = (ObjectNode) objectMapper.readTree(
                                 String.format(jsonTemplate, longId, sampleId, objectNodeForAvroRecord.get("location").asLong()));
-                        currentDocument.set("fields", schema);
                         documentList.add(currentDocument);
+
+                        ArrayNode schema = (ArrayNode) currentDocument.get("schema");
+                        schema.addAll(avroSchema);
 
                         currentEntryArray = (ArrayNode) currentDocument.get("entries");
                         currentEntryArray.add(objectNodeForAvroRecord);
