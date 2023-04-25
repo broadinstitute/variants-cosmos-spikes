@@ -80,6 +80,9 @@ public class AvroReader {
                     Long longCounter = counter.incrementAndGet();
                     ObjectNode objectNodeForAvroRecord = (ObjectNode) objectMapper.readTree(record.toString());
                     Long sampleId = objectNodeForAvroRecord.get("sample_id").asLong();
+                    // This datum will become redundant; the containing document will have the same sample_id for every
+                    // individual variant or ref range item.
+                    objectNodeForAvroRecord.remove("sample_id");
                     if (sampleId.equals(currentSampleId) && currentArrayNode.size() < ingestArguments.getMaxRecordsPerDocument()) {
                         currentArrayNode.add(objectNodeForAvroRecord);
                         currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(objectNodeForAvroRecord));
