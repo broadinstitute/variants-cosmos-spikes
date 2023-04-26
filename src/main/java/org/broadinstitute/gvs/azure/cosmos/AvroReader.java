@@ -18,7 +18,6 @@ import reactor.core.publisher.Flux;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -28,6 +27,8 @@ import java.util.stream.Stream;
 public class AvroReader {
 
     private static final Logger logger = LoggerFactory.getLogger(AvroReader.class);
+
+    public static final long CHROMOSOME_MULTIPLIER = 1000000000000L;
 
     public static List<Path> findAvroPaths(String avroDir) {
         try {
@@ -68,12 +69,14 @@ public class AvroReader {
 
         File file = new File(path.toString());
         GenericDatumReader<?> reader = new GenericDatumReader<>();
-        long currentMaxLocation = -1L;
         List<ObjectNode> documentList = new ArrayList<>();
         ObjectNode currentDocument = null;
         ArrayNode currentEntryArray = null;
         Long currentSampleId = null;
+        long currentMaxLocation = -1L;
+        short currentChromosome = -1;
         ArrayNode avroSchema = null;
+        // Why is this not a number in BQ?
         String dropState = ingestArguments.getDropState();
 
         try {
@@ -91,9 +94,11 @@ public class AvroReader {
                         }
                     }
                     Long sampleId = objectNodeForAvroRecord.get("sample_id").asLong();
-                    optimizeAvroRecord(objectNodeForAvroRecord);
+                    Short chromosome = (short) (objectNodeForAvroRecord.get("location").asLong() / CHROMOSOME_MULTIPLIER);
+                    formatAvroRecordForCosmos(objectNodeForAvroRecord);
 
-                    if (sampleId.equals(currentSampleId) && currentEntryArray.size() < ingestArguments.getMaxRecordsPerDocument()) {
+                    if (sampleId.equals(currentSampleId) && chromosome.equals(currentChromosome) &&
+                            currentEntryArray.size() < ingestArguments.getMaxRecordsPerDocument()) {
                         currentEntryArray.add(objectNodeForAvroRecord);
                         currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(objectNodeForAvroRecord));
                     } else {
@@ -129,6 +134,7 @@ public class AvroReader {
                         currentEntryArray = (ArrayNode) currentDocument.get("entries");
                         currentEntryArray.add(objectNodeForAvroRecord);
                         currentSampleId = sampleId;
+                        currentChromosome = chromosome;
                         currentMaxLocation = calculateEndLocation(objectNodeForAvroRecord);
                     }
                     if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
@@ -144,7 +150,7 @@ public class AvroReader {
     }
 
     @VisibleForTesting
-    static void optimizeAvroRecord(ObjectNode record) {
+    static void formatAvroRecordForCosmos(ObjectNode record) {
         // This datum will become redundant; the containing document will have the same sample_id for every
         // individual variant or ref range item.
         record.remove("sample_id");
