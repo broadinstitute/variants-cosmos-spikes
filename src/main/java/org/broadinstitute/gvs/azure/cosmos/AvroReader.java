@@ -60,6 +60,14 @@ public class AvroReader {
         return location.asLong() + Math.max(refLength, maxAltLength) - 1;
     }
 
+    private static void finishCurrentDocument(ObjectNode currentDocument, long currentMaxLocation, String dropState) {
+        ObjectNode location = (ObjectNode) currentDocument.get("location");
+        location.set("end", new LongNode(currentMaxLocation));
+        if (dropState != null) {
+            currentDocument.put("dropState", dropState);
+        }
+    }
+
     @VisibleForTesting
     static List<ObjectNode> objectNodesForAvroPath(
             ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
@@ -79,10 +87,21 @@ public class AvroReader {
         // Why is this not a number in BQ?
         String dropState = ingestArguments.getDropState();
 
+        String documentJsonTemplate = """
+                {
+                     "id": "%d",
+                     "sample_id" : %d,
+                     "location" : {
+                         "start" : %d
+                     },
+                     "schema": [],
+                     "entries" : []
+                }
+                """;
+
         try {
             try (DataFileReader<?> dataFileReader = new DataFileReader<>(file, reader)) {
                 for (Object record : dataFileReader) {
-
                     Long longCounter = counter.incrementAndGet();
                     ObjectNode objectNodeForAvroRecord = (ObjectNode) objectMapper.readTree(record.toString());
 
@@ -103,9 +122,7 @@ public class AvroReader {
                         currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(objectNodeForAvroRecord));
                     } else {
                         if (currentDocument != null) {
-                            // Write the end location for the now-completed document.
-                            ObjectNode location = (ObjectNode) currentDocument.get("location");
-                            location.set("end", new LongNode(currentMaxLocation));
+                            finishCurrentDocument(currentDocument, currentMaxLocation, dropState);
                         }
                         if (avroSchema == null) {
                             avroSchema = (ArrayNode) objectMapper.readTree(reader.getSchema().toString()).get("fields");
@@ -113,19 +130,9 @@ public class AvroReader {
 
                         // On to the next document.
                         long longId = id.incrementAndGet();
-                        String jsonTemplate = """
-                                {
-                                     "id": "%d",
-                                     "sample_id" : %d,
-                                     "location" : {
-                                         "start" : %d
-                                     },
-                                     "schema": [],
-                                     "entries" : []
-                                }
-                                """;
+
                         currentDocument = (ObjectNode) objectMapper.readTree(
-                                String.format(jsonTemplate, longId, sampleId, objectNodeForAvroRecord.get("location").asLong()));
+                                String.format(documentJsonTemplate, longId, sampleId, objectNodeForAvroRecord.get("location").asLong()));
                         documentList.add(currentDocument);
 
                         ArrayNode schema = (ArrayNode) currentDocument.get("schema");
@@ -139,9 +146,7 @@ public class AvroReader {
                     }
                     if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
                 }
-                // Write the end location for the now-completed document.
-                ObjectNode location = (ObjectNode) currentDocument.get("location");
-                location.set("end", new LongNode(currentMaxLocation));
+                finishCurrentDocument(currentDocument, currentMaxLocation, dropState);
             }
             return documentList;
         } catch (IOException e) {

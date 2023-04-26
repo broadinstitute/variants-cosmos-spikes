@@ -114,6 +114,13 @@ public class AvroReaderTest {
 
             json = (ObjectNode) objectMapper.readTree(jsonString);
             Assert.assertEquals(AvroReader.calculateEndLocation(json), 1000000000012L);
+            // ref ranges without drop state should not have a drop state field
+            Iterator<String> fieldNames = json.fieldNames();
+            while (fieldNames.hasNext()) {
+                if (fieldNames.next().equals("dropState")) {
+                    Assert.fail("Unexpectedly found field 'dropState' in a ref ranges document");
+                }
+            }
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
@@ -188,6 +195,7 @@ public class AvroReaderTest {
         Assert.assertEquals(objectNodes.get(0).get("entries").size(), 49);
         Assert.assertEquals(objectNodes.get(1).get("entries").size(), 11);
         for (ObjectNode objectNode : objectNodes) {
+            Assert.assertEquals(objectNode.get("dropState").asText(), "4");
             Iterator<JsonNode> entries = objectNode.get("entries").iterator();
             // '4' states should have been dropped, we don't expect to see any in this stream.
             Stream<String> shouldBeDrops = Stream.generate(() -> null)
