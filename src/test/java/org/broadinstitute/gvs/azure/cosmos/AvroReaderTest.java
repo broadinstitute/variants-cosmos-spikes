@@ -3,6 +3,7 @@ package org.broadinstitute.gvs.azure.cosmos;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -22,7 +23,7 @@ public class AvroReaderTest {
     };
 
     public void testFindAvroFiles() {
-        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets");
+        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets/spanning_samples");
         Assert.assertEquals(avroFiles.size(), 1);
     }
 
@@ -126,13 +127,13 @@ public class AvroReaderTest {
         }
     }
 
-    public void testObjectNodesForAvroPath() {
+    public void testObjectNodesForAvroPathSpanningSamples() {
         ObjectMapper objectMapper = new ObjectMapper();
         IngestArguments ingestArguments;
         AtomicLong id = new AtomicLong();
         AtomicLong counter = new AtomicLong();
 
-        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets");
+        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets/spanning_samples");
 
         ingestArguments = IngestArguments.parseArgs(dummyArgvForTesting);
         Assert.assertEquals(ingestArguments.getMaxRecordsPerDocument(), 10000L);
@@ -163,16 +164,47 @@ public class AvroReaderTest {
         for (int i = 0; i < 8; i++) {
             Assert.assertEquals(objectNodes.get(i).get("entries").size(), 10);
             Assert.assertNotNull(objectNodes.get(i).get("location").get("end"));
+            Assert.assertEquals(objectNodes.get(i).get("chromosome").asInt(), 24);
         }
         Assert.assertEquals(objectNodes.get(8).get("entries").size(), 8);
         Assert.assertNotNull(objectNodes.get(8).get("location").get("end"));
+        Assert.assertEquals(objectNodes.get(8).get("chromosome").asInt(), 24);
 
         Assert.assertEquals(objectNodes.get(9).get("entries").size(), 10);
         Assert.assertNotNull(objectNodes.get(9).get("location").get("end"));
+        Assert.assertEquals(objectNodes.get(9).get("chromosome").asInt(), 1);
+
 
         Assert.assertEquals(objectNodes.get(10).get("entries").size(), 2);
         Assert.assertNotNull(objectNodes.get(10).get("location").get("end"));
+        Assert.assertEquals(objectNodes.get(10).get("chromosome").asInt(), 1);
         Assert.assertEquals(counter.get(), 100L);
+    }
+
+    public void testObjectNodesForAvroPathSpanningChromosomes() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        IngestArguments ingestArguments;
+        AtomicLong id = new AtomicLong();
+        AtomicLong counter = new AtomicLong();
+
+        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/vets/spanning_chromosomes");
+        ingestArguments = IngestArguments.parseArgs(dummyArgvForTesting);
+        Assert.assertEquals(ingestArguments.getMaxRecordsPerDocument(), 10000L);
+
+        List<ObjectNode> objectNodes = AvroReader.objectNodesForAvroPath(
+                objectMapper, avroFiles.get(0), ingestArguments, id, counter);
+
+        Assert.assertEquals(objectNodes.size(), 2);
+
+        for (JsonNode jsonNode : objectNodes.get(0).get("entries")) {
+            ObjectNode entry = (ObjectNode) jsonNode;
+            Assert.assertEquals(entry.get("location").asLong() / AvroReader.CHROMOSOME_MULTIPLIER, 11);
+        }
+
+        for (JsonNode jsonNode : objectNodes.get(1).get("entries")) {
+            ObjectNode entry = (ObjectNode) jsonNode;
+            Assert.assertEquals(entry.get("location").asLong() / AvroReader.CHROMOSOME_MULTIPLIER, 12);
+        }
     }
 
     public void testRefRangesWithDropState() {
@@ -180,7 +212,7 @@ public class AvroReaderTest {
         AtomicLong id = new AtomicLong();
         AtomicLong counter = new AtomicLong();
 
-        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/ref_ranges");
+        List<Path> avroFiles = AvroReader.findAvroPaths("src/test/resources/ref_ranges/spanning_samples");
 
         String[] argv = Arrays.copyOf(dummyArgvForTesting, dummyArgvForTesting.length + 2);
         argv[dummyArgvForTesting.length] = "--drop-state";
@@ -193,7 +225,10 @@ public class AvroReaderTest {
         Assert.assertEquals(objectNodes.size(), 2);
         Assert.assertEquals(counter.get(), 100L);
         Assert.assertEquals(objectNodes.get(0).get("entries").size(), 49);
+        Assert.assertEquals(objectNodes.get(0).get("chromosome").asInt(), 24);
         Assert.assertEquals(objectNodes.get(1).get("entries").size(), 11);
+        Assert.assertEquals(objectNodes.get(1).get("chromosome").asInt(), 1);
+
         for (ObjectNode objectNode : objectNodes) {
             Assert.assertEquals(objectNode.get("dropState").asText(), "4");
             Iterator<JsonNode> entries = objectNode.get("entries").iterator();

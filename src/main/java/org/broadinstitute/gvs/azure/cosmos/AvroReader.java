@@ -91,6 +91,7 @@ public class AvroReader {
                 {
                      "id": "%d",
                      "sample_id" : %d,
+                     "chromosome": %d,
                      "location" : {
                          "start" : %d
                      },
@@ -130,9 +131,10 @@ public class AvroReader {
 
                         // On to the next document.
                         long longId = id.incrementAndGet();
+                        String currentDocumentText = String.format(
+                                documentJsonTemplate, longId, sampleId, chromosome, objectNodeForAvroRecord.get("location").asLong());
 
-                        currentDocument = (ObjectNode) objectMapper.readTree(
-                                String.format(documentJsonTemplate, longId, sampleId, objectNodeForAvroRecord.get("location").asLong()));
+                        currentDocument = (ObjectNode) objectMapper.readTree(currentDocumentText);
                         documentList.add(currentDocument);
 
                         ArrayNode schema = (ArrayNode) currentDocument.get("schema");
