@@ -6,7 +6,7 @@ Includes initial Gradle and GitHub Actions setup to run unit tests.
 
 # VS-893 Group records for improved ingest performance.
 
-Groups variant and reference rows into fewer higher-level documents. Groupings by 5000 for vets and 40000 for reference
+Groups variant and reference rows into fewer higher-level documents. Groupings by 6000 for vets and 40000 for reference
 ranges (larger numbers produce HTTP 413 "Request size is too large" errors from Cosmos). This version of the code
 requires slightly modified `EXPORT DATA` statements to order data by `sample_id` and `location`:
 
