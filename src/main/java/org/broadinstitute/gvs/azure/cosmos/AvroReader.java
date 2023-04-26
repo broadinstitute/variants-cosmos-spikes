@@ -54,8 +54,9 @@ public class AvroReader {
         // insertion, or deletion. There can be multiple alts separated by commas, find the longest to compare with the
         // length of the ref to get the range of bases covered by this variant.
         long refLength = record.get("ref").asText().length();
-        Object[] sortedAltLengths = Arrays.stream(record.get("alt").asText().split(",")).map(String::length).sorted().toArray();
-        int maxAltLength = (Integer) sortedAltLengths[sortedAltLengths.length - 1];
+
+        @SuppressWarnings("OptionalGetWithoutIsPresent")
+        int maxAltLength = Arrays.stream(record.get("alt").asText().split(",")).map(String::length).max(Integer::compareTo).get();
 
         return location.asLong() + Math.max(refLength, maxAltLength) - 1;
     }
@@ -69,13 +70,13 @@ public class AvroReader {
     }
 
     @VisibleForTesting
-    static List<ObjectNode> objectNodesForAvroPath(
-            ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
+    static List<ObjectNode> documentsForAvroPath(
+            ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
         // Where the Cosmos JSON serialization magic happens:
         // https://github.com/Azure/azure-sdk-for-java/blob/80b12e48aeb6ad2f49e86643dfd7223bde7a9a0c/sdk/cosmos/azure-cosmos/src/main/java/com/azure/cosmos/implementation/JsonSerializable.java#L255
         //
 
-        File file = new File(path.toString());
+        File avroFile = new File(avroPath.toString());
         GenericDatumReader<?> reader = new GenericDatumReader<>();
         List<ObjectNode> documentList = new ArrayList<>();
         ObjectNode currentDocument = null;
@@ -101,26 +102,26 @@ public class AvroReader {
                 """;
 
         try {
-            try (DataFileReader<?> dataFileReader = new DataFileReader<>(file, reader)) {
-                for (Object record : dataFileReader) {
+            try (DataFileReader<?> dataFileReader = new DataFileReader<>(avroFile, reader)) {
+                for (Object avroRecord : dataFileReader) {
                     Long longCounter = counter.incrementAndGet();
-                    ObjectNode objectNodeForAvroRecord = (ObjectNode) objectMapper.readTree(record.toString());
+                    ObjectNode record = (ObjectNode) objectMapper.readTree(avroRecord.toString());
 
                     if (dropState != null) {
-                        String thisDropState = objectNodeForAvroRecord.get("state").asText();
+                        String thisDropState = record.get("state").asText();
                         if (thisDropState.equals(dropState)) {
                             if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
                             continue;
                         }
                     }
-                    Long sampleId = objectNodeForAvroRecord.get("sample_id").asLong();
-                    Short chromosome = (short) (objectNodeForAvroRecord.get("location").asLong() / CHROMOSOME_MULTIPLIER);
-                    formatAvroRecordForCosmos(objectNodeForAvroRecord);
+                    Long sampleId = record.get("sample_id").asLong();
+                    Short chromosome = (short) (record.get("location").asLong() / CHROMOSOME_MULTIPLIER);
+                    formatAvroRecordForCosmos(record);
 
                     if (sampleId.equals(currentSampleId) && chromosome.equals(currentChromosome) &&
                             currentEntryArray.size() < ingestArguments.getMaxRecordsPerDocument()) {
-                        currentEntryArray.add(objectNodeForAvroRecord);
-                        currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(objectNodeForAvroRecord));
+                        currentEntryArray.add(record);
+                        currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(record));
                     } else {
                         if (currentDocument != null) {
                             finishCurrentDocument(currentDocument, currentMaxLocation, dropState);
@@ -132,7 +133,7 @@ public class AvroReader {
                         // On to the next document.
                         long longId = id.incrementAndGet();
                         String currentDocumentText = String.format(
-                                documentJsonTemplate, longId, sampleId, chromosome, objectNodeForAvroRecord.get("location").asLong());
+                                documentJsonTemplate, longId, sampleId, chromosome, record.get("location").asLong());
 
                         currentDocument = (ObjectNode) objectMapper.readTree(currentDocumentText);
                         documentList.add(currentDocument);
@@ -141,10 +142,10 @@ public class AvroReader {
                         schema.addAll(avroSchema);
 
                         currentEntryArray = (ArrayNode) currentDocument.get("entries");
-                        currentEntryArray.add(objectNodeForAvroRecord);
+                        currentEntryArray.add(record);
                         currentSampleId = sampleId;
                         currentChromosome = chromosome;
-                        currentMaxLocation = calculateEndLocation(objectNodeForAvroRecord);
+                        currentMaxLocation = calculateEndLocation(record);
                     }
                     if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
                 }
@@ -158,11 +159,11 @@ public class AvroReader {
 
     @VisibleForTesting
     static void formatAvroRecordForCosmos(ObjectNode record) {
-        // This datum will become redundant; the containing document will have the same sample_id for every
+        // The `sample_id` field will become redundant; the containing document will have the same sample_id for every
         // individual variant or ref range item.
         record.remove("sample_id");
 
-        // Iterate the fields of the object looking for anything null-valued. Remove these key / values as they only
+        // Iterate the fields of the record looking for anything null-valued. Remove these key / values as they only
         // take up space. The schema is in the containing document which would allow for them to be restored when
         // pulling out of Cosmos.
         Iterator<Map.Entry<String, JsonNode>> it = record.fields();
@@ -178,8 +179,8 @@ public class AvroReader {
 
     public static Flux<CosmosItemOperation> itemFluxFromAvroPath(
             ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
-        List<ObjectNode> documentList = objectNodesForAvroPath(objectMapper, path, ingestArguments, id, counter);
-        return Flux.fromIterable(documentList).map(
+        List<ObjectNode> documents = documentsForAvroPath(objectMapper, path, ingestArguments, id, counter);
+        return Flux.fromIterable(documents).map(
                 document -> CosmosBulkOperations.getCreateItemOperation(
                         document, new PartitionKey(document.get("sample_id").longValue())));
     }
