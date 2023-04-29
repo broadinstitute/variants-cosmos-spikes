@@ -33,37 +33,44 @@ public class CosmosIngest {
                     getDatabase(ingestArguments.getDatabase()).
                     getContainer(ingestArguments.getContainer());
 
-            loadAvros(container, avroPaths, ingestArguments);
+            loadAvroFiles(container, avroPaths, ingestArguments);
         }
     }
 
-    public static void loadAvros(CosmosAsyncContainer container, Iterable<Path> avroPaths, IngestArguments ingestArguments) {
+    public static void loadAvroFiles(CosmosAsyncContainer container, Iterable<Path> avroPaths, IngestArguments ingestArguments) {
         ObjectMapper objectMapper = new ObjectMapper();
         AtomicLong recordCounter = new AtomicLong();
         AtomicLong documentCounter = new AtomicLong();
         AtomicLong submissionBatchCounter = new AtomicLong();
+        int submissionBatchSize = ingestArguments.getSubmissionBatchSize();
 
-        // Continuous Flux loading is faster if the container throughput is sufficiently high (~10K RU/s in my limited
-        // experience), but will quickly crash out this loader with non-retryable 429s if throughput is too low.
+        // Continuous Flux loading is faster if the container throughput is sufficiently high (>= ~10K RU/s in my
+        // limited experience), but will quickly crash this loader with non-retryable 429s if throughput is too low.
         if (ingestArguments.isContinuousFlux()) {
             Flux<CosmosBulkItemResponse> responseFlux = Flux.fromIterable(avroPaths).flatMap(
                     avroPath -> {
                         Flux<CosmosItemOperation> itemFlux =
                                 AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
-                        return itemFlux.buffer(ingestArguments.getSubmissionBatchSize()).flatMap(batch -> {
-                            Flux<CosmosItemOperation> submissionBatchFlux = Flux.fromIterable(batch);
-                            logger.info("Submitting batch " + submissionBatchCounter.incrementAndGet() + " at counter " + documentCounter.get());
-                            return executeItemOperationsWithErrorHandling(container, submissionBatchFlux);
-                        });
+
+                        return itemFlux.buffer(submissionBatchSize).flatMap(
+                                batch -> {
+                                    logger.info("Submitting batch " + submissionBatchCounter.incrementAndGet() + " at document counter " + documentCounter.get());
+                                    return executeItemOperationsWithErrorHandling(container, Flux.fromIterable(batch));
+                                });
                     }
             );
             responseFlux.blockLast();
         } else {
             for (Path avroPath : avroPaths) {
                 logger.info(String.format("Processing Avro file '%s'...", avroPath));
+
                 Flux<CosmosItemOperation> itemFlux =
                         AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
-                executeItemOperationsWithErrorHandling(container, itemFlux).blockLast();
+
+                for (List<CosmosItemOperation> submissionBatch : itemFlux.buffer(submissionBatchSize).toIterable()) {
+                    executeItemOperationsWithErrorHandling(container, Flux.fromIterable(submissionBatch)).blockLast();
+                }
+
                 logger.info(String.format("Avro file '%s' processing complete.", avroPath));
             }
         }
