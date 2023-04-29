@@ -63,7 +63,7 @@ public class CosmosIngest {
                 logger.info(String.format("Processing Avro file '%s'...", avroPath));
                 Flux<CosmosItemOperation> itemFlux =
                         AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
-                executeItemOperationsWithErrorHandling(container, itemFlux);
+                executeItemOperationsWithErrorHandling(container, itemFlux).blockLast();
                 logger.info(String.format("Avro file '%s' processing complete.", avroPath));
             }
         }
