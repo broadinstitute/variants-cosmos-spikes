@@ -33,8 +33,12 @@ public class IngestArguments {
         return dropState;
     }
 
-    public Integer getCosmosBatchSize() {
-        return cosmosBatchSize;
+    public Integer getSubmissionBatchSize() {
+        return submissionBatchSize;
+    }
+
+    public boolean isContinuousFlux() {
+        return continuousFlux;
     }
 
     @VisibleForTesting
@@ -67,8 +71,11 @@ public class IngestArguments {
     @Parameter(names = {"--drop-state"}, description = "If a record has a 'state' property with this value specified it will be omitted from the containing document")
     private String dropState;
 
-    @Parameter(names = {"--cosmos-batch-size"}, description = "The number of documents to submit to Cosmos in a single batch")
-    private Integer cosmosBatchSize = 100;
+    @Parameter(names = {"--submission-batch-size"}, description = "The number of documents to submit to Cosmos in a single batch")
+    private Integer submissionBatchSize = 100;
+
+    @Parameter(names = {"--continuous-flux"}, description = "Whether to submit to Cosmos file-by-file (default) or in a continuous Flux")
+    private boolean continuousFlux = false;
 
     private IngestArguments() {
     }

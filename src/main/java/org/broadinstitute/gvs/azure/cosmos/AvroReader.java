@@ -71,7 +71,8 @@ public class AvroReader {
 
     @VisibleForTesting
     static List<ObjectNode> documentsForAvroPath(
-            ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
+            ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments,
+            AtomicLong recordCounter, AtomicLong documentCounter) {
         // Where the Cosmos JSON serialization magic happens:
         // https://github.com/Azure/azure-sdk-for-java/blob/80b12e48aeb6ad2f49e86643dfd7223bde7a9a0c/sdk/cosmos/azure-cosmos/src/main/java/com/azure/cosmos/implementation/JsonSerializable.java#L255
 
@@ -103,13 +104,13 @@ public class AvroReader {
         try {
             try (DataFileReader<?> dataFileReader = new DataFileReader<>(avroFile, reader)) {
                 for (Object avroRecord : dataFileReader) {
-                    Long longCounter = counter.incrementAndGet();
+                    Long longDocumentCounter = documentCounter.incrementAndGet();
                     ObjectNode record = (ObjectNode) objectMapper.readTree(avroRecord.toString());
 
                     if (dropState != null) {
                         String thisDropState = record.get("state").asText();
                         if (thisDropState.equals(dropState)) {
-                            if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
+                            if (longDocumentCounter % ingestArguments.getNumProgress() == 0L) logger.info(longDocumentCounter + "...");
                             continue;
                         }
                     }
@@ -130,7 +131,7 @@ public class AvroReader {
                         }
 
                         // On to the next document.
-                        long longId = id.incrementAndGet();
+                        long longId = recordCounter.incrementAndGet();
                         String currentDocumentText = String.format(
                                 documentJsonTemplate, longId, sampleId, chromosome, record.get("location").asLong());
 
@@ -146,7 +147,7 @@ public class AvroReader {
                         currentChromosome = chromosome;
                         currentMaxLocation = calculateEndLocation(record);
                     }
-                    if (longCounter % ingestArguments.getNumProgress() == 0L) logger.info(longCounter + "...");
+                    if (longDocumentCounter % ingestArguments.getNumProgress() == 0L) logger.info(longDocumentCounter + "...");
                 }
                 finishCurrentDocument(currentDocument, currentMaxLocation, dropState);
             }
@@ -177,9 +178,9 @@ public class AvroReader {
     }
 
     public static Flux<CosmosItemOperation> itemFluxFromAvroPath(
-            ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
+            ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments, AtomicLong recordCounter, AtomicLong documentCounter) {
 
-        List<ObjectNode> documents = documentsForAvroPath(objectMapper, avroPath, ingestArguments, id, counter);
+        List<ObjectNode> documents = documentsForAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
         return Flux.fromIterable(documents).map(
                 document -> CosmosBulkOperations.getCreateItemOperation(
                         document, new PartitionKey(document.get("sample_id").longValue())));

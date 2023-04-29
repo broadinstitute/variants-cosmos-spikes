@@ -22,7 +22,7 @@ public class CosmosIngest {
 
     private static final Logger logger = LoggerFactory.getLogger(CosmosIngest.class);
 
-    public static void main(String [] argv) {
+    public static void main(String[] argv) {
         configureLogging();
         CosmosEndpointAndKey endpointAndKey = CosmosEndpointAndKey.fromEnvironment();
         IngestArguments ingestArguments = IngestArguments.parseArgs(argv);
@@ -39,22 +39,40 @@ public class CosmosIngest {
 
     public static void loadAvros(CosmosAsyncContainer container, Iterable<Path> avroPaths, IngestArguments ingestArguments) {
         ObjectMapper objectMapper = new ObjectMapper();
-        AtomicLong id = new AtomicLong();
-        AtomicLong counter = new AtomicLong();
+        AtomicLong recordCounter = new AtomicLong();
+        AtomicLong documentCounter = new AtomicLong();
+        AtomicLong submissionBatchCounter = new AtomicLong();
 
-        for (Path avroPath : avroPaths) {
-            logger.info(String.format("Processing Avro file '%s'...", avroPath));
-            Flux<CosmosItemOperation> itemFlux =
-                    AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, id, counter);
-            executeItemOperationsWithErrorHandling(container, itemFlux);
-            logger.info(String.format("Avro file '%s' processing complete.", avroPath));
+        // Continuous Flux loading is faster if the container throughput is sufficiently high (~10K RU/s in my limited
+        // experience), but will quickly crash out this loader with non-retryable 429s if throughput is too low.
+        if (ingestArguments.isContinuousFlux()) {
+            Flux<CosmosBulkItemResponse> responseFlux = Flux.fromIterable(avroPaths).flatMap(
+                    avroPath -> {
+                        Flux<CosmosItemOperation> itemFlux =
+                                AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
+                        return itemFlux.buffer(ingestArguments.getSubmissionBatchSize()).flatMap(batch -> {
+                            Flux<CosmosItemOperation> submissionBatchFlux = Flux.fromIterable(batch);
+                            logger.info("Submitting batch " + submissionBatchCounter.incrementAndGet() + " at counter " + documentCounter.get());
+                            return executeItemOperationsWithErrorHandling(container, submissionBatchFlux);
+                        });
+                    }
+            );
+            responseFlux.blockLast();
+        } else {
+            for (Path avroPath : avroPaths) {
+                logger.info(String.format("Processing Avro file '%s'...", avroPath));
+                Flux<CosmosItemOperation> itemFlux =
+                        AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
+                executeItemOperationsWithErrorHandling(container, itemFlux);
+                logger.info(String.format("Avro file '%s' processing complete.", avroPath));
+            }
         }
     }
 
-    private static void executeItemOperationsWithErrorHandling(CosmosAsyncContainer container,
-                                                               Flux<CosmosItemOperation> itemOperations) {
+    private static Flux<CosmosBulkItemResponse> executeItemOperationsWithErrorHandling(CosmosAsyncContainer container,
+                                                                                       Flux<CosmosItemOperation> itemOperations) {
         // Only the first and last few lines are the "execute" bits, all the rest is error handling iff something goes wrong.
-        container.executeBulkOperations(itemOperations).flatMap(operationResponse -> {
+        return container.executeBulkOperations(itemOperations).flatMap(operationResponse -> {
             CosmosBulkItemResponse itemResponse = operationResponse.getResponse();
             CosmosItemOperation itemOperation = operationResponse.getOperation();
 
@@ -76,8 +94,7 @@ public class CosmosIngest {
             } else {
                 return Mono.just(itemResponse);
             }
-
-        }).blockLast();
+        });
     }
 
     private static void configureLogging() {
