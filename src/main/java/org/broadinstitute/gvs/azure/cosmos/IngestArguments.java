@@ -33,6 +33,10 @@ public class IngestArguments {
         return dropState;
     }
 
+    public Integer getCosmosBatchSize() {
+        return cosmosBatchSize;
+    }
+
     @VisibleForTesting
     static final long NUM_PROGRESS = 1000000;
 
@@ -57,12 +61,14 @@ public class IngestArguments {
     @Parameter(names = {"--num-progress"}, description = "Number of records to load between progress messages")
     private Long numProgress = NUM_PROGRESS;
 
-
     @Parameter(names = {"--max-records-per-document"}, description = "Maximum number of records to include within a single Cosmos document")
     private Long maxRecordsPerDocument = MAX_RECORDS_PER_DOCUMENT;
 
     @Parameter(names = {"--drop-state"}, description = "If a record has a 'state' property with this value specified it will be omitted from the containing document")
     private String dropState;
+
+    @Parameter(names = {"--cosmos-batch-size"}, description = "The number of documents to submit to Cosmos in a single batch")
+    private Integer cosmosBatchSize = 100;
 
     private IngestArguments() {
     }
