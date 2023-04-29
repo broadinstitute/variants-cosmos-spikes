@@ -74,7 +74,6 @@ public class AvroReader {
             ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
         // Where the Cosmos JSON serialization magic happens:
         // https://github.com/Azure/azure-sdk-for-java/blob/80b12e48aeb6ad2f49e86643dfd7223bde7a9a0c/sdk/cosmos/azure-cosmos/src/main/java/com/azure/cosmos/implementation/JsonSerializable.java#L255
-        //
 
         File avroFile = new File(avroPath.toString());
         GenericDatumReader<?> reader = new GenericDatumReader<>();
@@ -178,8 +177,9 @@ public class AvroReader {
     }
 
     public static Flux<CosmosItemOperation> itemFluxFromAvroPath(
-            ObjectMapper objectMapper, Path path, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
-        List<ObjectNode> documents = documentsForAvroPath(objectMapper, path, ingestArguments, id, counter);
+            ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments, AtomicLong id, AtomicLong counter) {
+
+        List<ObjectNode> documents = documentsForAvroPath(objectMapper, avroPath, ingestArguments, id, counter);
         return Flux.fromIterable(documents).map(
                 document -> CosmosBulkOperations.getCreateItemOperation(
                         document, new PartitionKey(document.get("sample_id").longValue())));
