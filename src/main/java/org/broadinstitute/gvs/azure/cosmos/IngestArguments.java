@@ -41,6 +41,10 @@ public class IngestArguments {
         return continuousFlux;
     }
 
+    public Integer getTargetThroughput() {
+        return targetThroughput;
+    }
+
     @VisibleForTesting
     static final long NUM_PROGRESS = 1000000;
 
@@ -76,6 +80,9 @@ public class IngestArguments {
 
     @Parameter(names = {"--continuous-flux"}, description = "Whether to submit to Cosmos file-by-file (default) or in a continuous Flux")
     private boolean continuousFlux = false;
+
+    @Parameter(names = {"--target-throughput"}, description = "Value to specify for Cosmos container local target throughput")
+    private Integer targetThroughput;
 
     private IngestArguments() {
     }

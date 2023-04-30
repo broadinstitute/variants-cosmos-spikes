@@ -1,10 +1,7 @@
 package org.broadinstitute.gvs.azure.cosmos;
 
 import ch.qos.logback.classic.Level;
-import com.azure.cosmos.ConsistencyLevel;
-import com.azure.cosmos.CosmosAsyncClient;
-import com.azure.cosmos.CosmosAsyncContainer;
-import com.azure.cosmos.CosmosClientBuilder;
+import com.azure.cosmos.*;
 import com.azure.cosmos.models.CosmosBulkItemResponse;
 import com.azure.cosmos.models.CosmosItemOperation;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +29,15 @@ public class CosmosIngest {
             CosmosAsyncContainer container = client.
                     getDatabase(ingestArguments.getDatabase()).
                     getContainer(ingestArguments.getContainer());
+
+            if (ingestArguments.getTargetThroughput() != null) {
+                ThroughputControlGroupConfig groupConfig =
+                        new ThroughputControlGroupConfigBuilder()
+                                .groupName("local-throughput-group")
+                                .targetThroughput(ingestArguments.getTargetThroughput())
+                                .build();
+                container.enableLocalThroughputControlGroup(groupConfig);
+            }
 
             loadAvroFiles(container, avroPaths, ingestArguments);
         }
