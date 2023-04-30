@@ -2,6 +2,8 @@ package org.broadinstitute.gvs.azure.cosmos;
 
 import ch.qos.logback.classic.Level;
 import com.azure.cosmos.*;
+import com.azure.cosmos.implementation.ImplementationBridgeHelpers;
+import com.azure.cosmos.models.CosmosBulkExecutionOptions;
 import com.azure.cosmos.models.CosmosBulkItemResponse;
 import com.azure.cosmos.models.CosmosItemOperation;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,6 +52,8 @@ public class CosmosIngest {
         AtomicLong submissionBatchCounter = new AtomicLong();
         int submissionBatchSize = ingestArguments.getSubmissionBatchSize();
 
+        CosmosBulkExecutionOptions bulkExecutionOptions = buildCosmosBulkExecutionOptions(ingestArguments);
+
         // Continuous Flux loading is faster if the container throughput is sufficiently high (>= ~10K RU/s in my
         // limited experience), but will quickly crash this loader with non-retryable 429s if throughput is too low.
         if (ingestArguments.isContinuousFlux()) {
@@ -61,7 +65,7 @@ public class CosmosIngest {
                         return itemFlux.buffer(submissionBatchSize).flatMap(
                                 batch -> {
                                     logger.info("Submitting batch " + submissionBatchCounter.incrementAndGet() + " at document counter " + documentCounter.get());
-                                    return executeItemOperationsWithErrorHandling(container, Flux.fromIterable(batch));
+                                    return executeItemOperationsWithErrorHandling(container, Flux.fromIterable(batch), bulkExecutionOptions);
                                 });
                     }
             );
@@ -74,7 +78,7 @@ public class CosmosIngest {
                         AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
 
                 for (List<CosmosItemOperation> submissionBatch : itemFlux.buffer(submissionBatchSize).toIterable()) {
-                    executeItemOperationsWithErrorHandling(container, Flux.fromIterable(submissionBatch)).blockLast();
+                    executeItemOperationsWithErrorHandling(container, Flux.fromIterable(submissionBatch), bulkExecutionOptions).blockLast();
                 }
 
                 logger.info(String.format("Avro file '%s' processing complete.", avroPath));
@@ -82,10 +86,25 @@ public class CosmosIngest {
         }
     }
 
+    private static CosmosBulkExecutionOptions buildCosmosBulkExecutionOptions(IngestArguments ingestArguments) {
+        // No idea what this bridge stuff is about, most of the getters/setters are not public on CosmosBulkExecutionOptions.
+        ImplementationBridgeHelpers.CosmosBulkExecutionOptionsHelper.CosmosBulkExecutionOptionsAccessor accessor =
+                ImplementationBridgeHelpers.CosmosBulkExecutionOptionsHelper.getCosmosBulkExecutionOptionsAccessor();
+        CosmosBulkExecutionOptions bulkExecutionOptions = new CosmosBulkExecutionOptions();
+
+        bulkExecutionOptions = accessor.setMaxMicroBatchSize(bulkExecutionOptions, ingestArguments.getMaxMicroBatchSize());
+        bulkExecutionOptions = accessor.setTargetedMicroBatchRetryRate(bulkExecutionOptions, ingestArguments.getMinMicroBatchRetryRate(), ingestArguments.getMaxMicroBatchRetryRate());
+
+        // And this one is public for some reason...
+        bulkExecutionOptions.setMaxMicroBatchConcurrency(ingestArguments.getMaxMicroBatchConcurrency());
+        return bulkExecutionOptions;
+    }
+
     private static Flux<CosmosBulkItemResponse> executeItemOperationsWithErrorHandling(CosmosAsyncContainer container,
-                                                                                       Flux<CosmosItemOperation> itemOperations) {
+                                                                                       Flux<CosmosItemOperation> itemOperations,
+                                                                                       CosmosBulkExecutionOptions cosmosBulkExecutionOptions) {
         // Only the first and last few lines are the "execute" bits, all the rest is error handling iff something goes wrong.
-        return container.executeBulkOperations(itemOperations).flatMap(operationResponse -> {
+        return container.executeBulkOperations(itemOperations, cosmosBulkExecutionOptions).flatMap(operationResponse -> {
             CosmosBulkItemResponse itemResponse = operationResponse.getResponse();
             CosmosItemOperation itemOperation = operationResponse.getOperation();
 
