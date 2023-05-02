@@ -89,3 +89,73 @@ be much faster than the VS-890 baseline). The updated indexing policy should loo
     ]
 }
 ```
+
+# VS-906 Cosmos DB Serverless Exploration
+
+[Cosmos DB serverless](https://learn.microsoft.com/en-us/azure/cosmos-db/serverless) is restricted to [50 GB per
+container and 5000 RU/s throughput](https://learn.microsoft.com/en-us/azure/cosmos-db/concepts-limits#serverless). There is a
+[preview 1 TB container](https://learn.microsoft.com/en-us/azure/cosmos-db/serverless-1tb) offering in which I have
+enrolled the Variants subscription which will offer higher throughput as storage grows.
+
+An ingest run with Quickstart data using the code from this spike consumed 6.65 M RU for reference data and 10.36
+M RU for variant data. Run times were ~32 minutes and ~37 for a total of ~69 minutes. RU consumption cost was
+```
+(6.65 + 10.36 =~ 17M RU * $0.25 / RU) = $4.25
+```
+
+or $0.425 per sample. Storage cost was
+
+```
+10.03 + 13.13 = 23.16 * $0.25 GB / month = $5.79 GB / month
+```
+
+or $0.58 / sample * month.
+
+After creating indexes with this specification the UI did not report any change in storage amount (or cost):
+
+```
+{
+    "indexingMode": "consistent",
+    "automatic": true,
+    "includedPaths": [
+        {
+            "path": "/sample_id/*"
+        },
+        {
+            "path": "/location/*"
+        }
+    ],
+    "excludedPaths": [
+        {
+            "path": "/*"
+        }
+    ]
+}
+```
+
+Invocations looked on a `Standard_E4-2ads_v5` VM looked like:
+
+```
+java -Xms2g -Xmx26g -jar build/libs/variantstore-*.jar --database cosmos-gvs-serverless --container ref_ranges \
+   --avro-dir /mnt/data/avros-sample-location/ref_ranges/ref_ranges_001/ --max-records-per-document 40000 --drop-state 4
+```
+
+```
+java -Xms2g -Xmx26g -jar build/libs/variantstore-*.jar --database cosmos-gvs-serverless --container vets \
+  --avro-dir /mnt/data/avros-sample-location/vets/vet_001/ --max-records-per-document 6000
+```
+
+## Improvements
+
+* Support for references drop states with `--drop-state` parameter
+* Always split Cosmos documents on chromosome boundaries
+* Parameter `--submission-batch-size` to control the maximum size of document batches sent to Cosmos at one time.
+* Parameter `--continuous-flux` to turn on more efficient (but more crashy on low throughput) continuous-Flux data loading.
+* Support for various Cosmos parameters. I experimented with all of these but none seemed to help with the high numbers of 429 statuses seen in Cosmos Insights:
+  * `--target-throughput`: Value to specify for Cosmos container local target throughput
+  * `--max-micro-batch-size`: CosmosBulkExecutionOptions micro batch size
+  * `--micro-batch-concurrency`: CosmosBulkExecutionOptions micro batch concurrency
+  * `--max-micro-batch-retry-rate`: CosmosBulkExecutionOptions max micro batch retry rate
+  * `--min-micro-batch-retry-rate`: CosmosBulkExecutionOptions min micro batch retry rate
+  * `--min-micro-batch-interval-millis`: CosmosBulkExecutionOptions retry rate in milliseconds
+* Lots of general cleanup

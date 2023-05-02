@@ -62,6 +62,8 @@ public class IngestArguments {
         return minMicroBatchRetryRate;
     }
 
+    // See notes at member definition for why this is currently unused.
+    @SuppressWarnings("unused")
     public Integer getMaxMicroBatchIntervalMillis() {
         return maxMicroBatchIntervalMillis;
     }
@@ -117,7 +119,9 @@ public class IngestArguments {
     @Parameter(names = {"--min-micro-batch-retry-rate"}, description = "CosmosBulkExecutionOptions min micro batch retry rate")
     private Double minMicroBatchRetryRate = BatchRequestResponseConstants.DEFAULT_MIN_MICRO_BATCH_RETRY_RATE;
 
-    @Parameter(names = {"--min-micro-batch-interval-millis"}, description = "CosmosBulkExecutionOptions min micro batch retry rate")
+    // This option is made hidden as it is currently not actually supported by this code. There is no setter either in
+    // `CosmosBulkExecutionOptions` or in its "implementation bridge".
+    @Parameter(names = {"--min-micro-batch-interval-millis"}, description = "CosmosBulkExecutionOptions min micro batch retry rate", hidden = true)
     private Integer maxMicroBatchIntervalMillis = BatchRequestResponseConstants.DEFAULT_MAX_MICRO_BATCH_INTERVAL_IN_MILLISECONDS;
 
     private IngestArguments() {
