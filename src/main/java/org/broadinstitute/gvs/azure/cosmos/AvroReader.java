@@ -80,7 +80,7 @@ public class AvroReader {
         GenericDatumReader<?> reader = new GenericDatumReader<>();
         List<ObjectNode> documentList = new ArrayList<>();
         ObjectNode currentDocument = null;
-        ArrayNode currentEntryArray = null;
+        ArrayNode currentRecordArray = null;
         Long currentSampleId = null;
         long currentMaxLocation = -1L;
         short currentChromosome = -1;
@@ -108,8 +108,9 @@ public class AvroReader {
                     ObjectNode record = (ObjectNode) objectMapper.readTree(avroRecord.toString());
 
                     if (dropState != null) {
-                        String thisDropState = record.get("state").asText();
-                        if (thisDropState.equals(dropState)) {
+                        String state = record.get("state").asText();
+                        // Drop this record if its state matches the drop state.
+                        if (state.equals(dropState)) {
                             if (longRecordCounter % ingestArguments.getNumProgress() == 0L) logger.info(longRecordCounter + "...");
                             continue;
                         }
@@ -119,9 +120,9 @@ public class AvroReader {
                     formatAvroRecordForCosmos(record);
 
                     if (sampleId.equals(currentSampleId) && chromosome.equals(currentChromosome) &&
-                            currentEntryArray.size() < ingestArguments.getMaxRecordsPerDocument()) {
+                            currentRecordArray.size() < ingestArguments.getMaxRecordsPerDocument()) {
                         // Add to current document
-                        currentEntryArray.add(record);
+                        currentRecordArray.add(record);
                         currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(record));
                     } else {
                         // Make a new document.
@@ -144,8 +145,8 @@ public class AvroReader {
                         ArrayNode schema = (ArrayNode) currentDocument.get("schema");
                         schema.addAll(avroSchema);
 
-                        currentEntryArray = (ArrayNode) currentDocument.get("entries");
-                        currentEntryArray.add(record);
+                        currentRecordArray = (ArrayNode) currentDocument.get("entries");
+                        currentRecordArray.add(record);
                         currentSampleId = sampleId;
                         currentChromosome = chromosome;
                         currentMaxLocation = calculateEndLocation(record);
