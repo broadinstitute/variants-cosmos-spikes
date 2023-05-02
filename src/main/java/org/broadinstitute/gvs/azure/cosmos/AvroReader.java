@@ -120,10 +120,13 @@ public class AvroReader {
 
                     if (sampleId.equals(currentSampleId) && chromosome.equals(currentChromosome) &&
                             currentEntryArray.size() < ingestArguments.getMaxRecordsPerDocument()) {
+                        // Add to current document
                         currentEntryArray.add(record);
                         currentMaxLocation = Math.max(currentMaxLocation, calculateEndLocation(record));
                     } else {
+                        // Make a new document.
                         if (currentDocument != null) {
+                            // Finish off the current document if there is one.
                             finishCurrentDocument(currentDocument, currentMaxLocation, dropState);
                         }
                         if (avroSchema == null) {
