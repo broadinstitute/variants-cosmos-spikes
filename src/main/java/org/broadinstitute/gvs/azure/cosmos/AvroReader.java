@@ -177,12 +177,12 @@ public class AvroReader {
         record.remove(fieldsToRemove);
     }
 
-    public static Flux<CosmosItemOperation> itemFluxFromAvroPath(
+    public static Stream<CosmosItemOperation> itemStreamFromAvroPath(
             ObjectMapper objectMapper, Path avroPath, IngestArguments ingestArguments, AtomicLong recordCounter, AtomicLong documentCounter) {
 
         List<ObjectNode> documents = documentsForAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
-        return Flux.fromIterable(documents).map(
-                document -> CosmosBulkOperations.getCreateItemOperation(
-                        document, new PartitionKey(document.get("sample_id").longValue())));
+
+        return documents.stream().map(document ->
+                CosmosBulkOperations.getCreateItemOperation(document, new PartitionKey(document.get("sample_id").longValue())));
     }
 }
