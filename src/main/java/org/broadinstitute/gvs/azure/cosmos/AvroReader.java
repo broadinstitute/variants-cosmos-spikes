@@ -104,13 +104,13 @@ public class AvroReader {
         try {
             try (DataFileReader<?> dataFileReader = new DataFileReader<>(avroFile, reader)) {
                 for (Object avroRecord : dataFileReader) {
-                    Long longDocumentCounter = documentCounter.incrementAndGet();
+                    Long longRecordCounter = recordCounter.incrementAndGet();
                     ObjectNode record = (ObjectNode) objectMapper.readTree(avroRecord.toString());
 
                     if (dropState != null) {
                         String thisDropState = record.get("state").asText();
                         if (thisDropState.equals(dropState)) {
-                            if (longDocumentCounter % ingestArguments.getNumProgress() == 0L) logger.info(longDocumentCounter + "...");
+                            if (longRecordCounter % ingestArguments.getNumProgress() == 0L) logger.info(longRecordCounter + "...");
                             continue;
                         }
                     }
@@ -134,9 +134,9 @@ public class AvroReader {
                         }
 
                         // On to the next document.
-                        long longId = recordCounter.incrementAndGet();
                         String currentDocumentText = String.format(
-                                documentJsonTemplate, longId, sampleId, chromosome, record.get("location").asLong());
+                                documentJsonTemplate, documentCounter.incrementAndGet(),
+                                sampleId, chromosome, record.get("location").asLong());
 
                         currentDocument = (ObjectNode) objectMapper.readTree(currentDocumentText);
                         documentList.add(currentDocument);
@@ -150,7 +150,7 @@ public class AvroReader {
                         currentChromosome = chromosome;
                         currentMaxLocation = calculateEndLocation(record);
                     }
-                    if (longDocumentCounter % ingestArguments.getNumProgress() == 0L) logger.info(longDocumentCounter + "...");
+                    if (longRecordCounter % ingestArguments.getNumProgress() == 0L) logger.info(longRecordCounter + "...");
                 }
                 finishCurrentDocument(currentDocument, currentMaxLocation, dropState);
             }
