@@ -133,7 +133,7 @@ After creating indexes with this specification the UI did not report any change 
 }
 ```
 
-Invocations looked on a `Standard_E4-2ads_v5` VM looked like:
+Invocations on a `Standard_E4-2ads_v5` VM looked like:
 
 ```
 java -Xms2g -Xmx26g -jar build/libs/variantstore-*.jar --database cosmos-gvs-serverless --container ref_ranges \
@@ -145,7 +145,7 @@ java -Xms2g -Xmx26g -jar build/libs/variantstore-*.jar --database cosmos-gvs-ser
   --avro-dir /mnt/data/avros-sample-location/vets/vet_001/ --max-records-per-document 6000
 ```
 
-## Improvements
+## Improvements in VS-906
 
 * Support for references drop states with `--drop-state` parameter
 * Always split Cosmos documents on chromosome boundaries
