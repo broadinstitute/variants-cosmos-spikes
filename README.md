@@ -98,7 +98,7 @@ container and 5000 RU/s throughput](https://learn.microsoft.com/en-us/azure/cosm
 enrolled the Variants subscription which will offer higher throughput as storage grows.
 
 An ingest run with Quickstart data using the code from this spike consumed 6.65 M RU for reference data and 10.36
-M RU for variant data. Run times were ~32 minutes and ~37 for a total of ~69 minutes. RU consumption cost was
+M RU for variant data. Run times were ~32 minutes and ~37 minutes, respectively, for a total of ~69 minutes. RU consumption cost was
 ```
 (6.65 + 10.36 =~ 17M RU * $0.25 / RU) = $4.25
 ```
