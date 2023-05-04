@@ -85,7 +85,6 @@ public class AvroReader {
         long currentMaxLocation = -1L;
         short currentChromosome = -1;
         ArrayNode avroSchema = null;
-        // Why is this not a number in BQ?
         String dropState = ingestArguments.getDropState();
 
         String documentJsonTemplate = """
