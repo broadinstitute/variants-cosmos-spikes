@@ -1,10 +1,9 @@
 package org.broadinstitute.gvs.azure.cosmos;
 
 import ch.qos.logback.classic.Level;
-import com.azure.cosmos.ConsistencyLevel;
-import com.azure.cosmos.CosmosAsyncClient;
-import com.azure.cosmos.CosmosAsyncContainer;
-import com.azure.cosmos.CosmosClientBuilder;
+import com.azure.cosmos.*;
+import com.azure.cosmos.implementation.ImplementationBridgeHelpers;
+import com.azure.cosmos.models.CosmosBulkExecutionOptions;
 import com.azure.cosmos.models.CosmosBulkItemResponse;
 import com.azure.cosmos.models.CosmosItemOperation;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,7 +21,7 @@ public class CosmosIngest {
 
     private static final Logger logger = LoggerFactory.getLogger(CosmosIngest.class);
 
-    public static void main(String [] argv) {
+    public static void main(String[] argv) {
         configureLogging();
         CosmosEndpointAndKey endpointAndKey = CosmosEndpointAndKey.fromEnvironment();
         IngestArguments ingestArguments = IngestArguments.parseArgs(argv);
@@ -33,28 +32,90 @@ public class CosmosIngest {
                     getDatabase(ingestArguments.getDatabase()).
                     getContainer(ingestArguments.getContainer());
 
-            loadAvros(container, avroPaths, ingestArguments);
+            if (ingestArguments.getTargetThroughput() != null) {
+                ThroughputControlGroupConfig groupConfig =
+                        new ThroughputControlGroupConfigBuilder()
+                                .groupName("local-throughput-group")
+                                .targetThroughput(ingestArguments.getTargetThroughput())
+                                .build();
+                container.enableLocalThroughputControlGroup(groupConfig);
+            }
+
+            loadAvroFiles(container, avroPaths, ingestArguments);
         }
     }
 
-    public static void loadAvros(CosmosAsyncContainer container, Iterable<Path> avroPaths, IngestArguments ingestArguments) {
+    public static void loadAvroFiles(CosmosAsyncContainer container, Iterable<Path> avroPaths, IngestArguments ingestArguments) {
         ObjectMapper objectMapper = new ObjectMapper();
-        AtomicLong id = new AtomicLong();
-        AtomicLong counter = new AtomicLong();
+        AtomicLong recordCounter = new AtomicLong();
+        AtomicLong documentCounter = new AtomicLong();
+        AtomicLong submissionBatchCounter = new AtomicLong();
+        int submissionBatchSize = ingestArguments.getSubmissionBatchSize();
 
-        for (Path avroPath : avroPaths) {
-            logger.info(String.format("Processing Avro file '%s'...", avroPath));
-            Flux<CosmosItemOperation> itemFlux =
-                    AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, id, counter);
-            executeItemOperationsWithErrorHandling(container, itemFlux);
-            logger.info(String.format("Avro file '%s' processing complete.", avroPath));
+        CosmosBulkExecutionOptions bulkExecutionOptions = buildCosmosBulkExecutionOptions(ingestArguments);
+
+        // Continuous Flux loading is faster if the container throughput is sufficiently high (>= ~10K RU/s in my
+        // limited experience), but will quickly crash this loader with non-retryable 429s if throughput is too low.
+        // At the time of this writing, continuous flux is not a good choice for serverless Cosmos since serverless
+        // Cosmos has fixed 5K RU/s throughput.
+        if (ingestArguments.isContinuousFlux()) {
+            Flux<CosmosBulkItemResponse> responseFlux = Flux.fromIterable(avroPaths).flatMap(
+                    avroPath -> {
+                        Flux<CosmosItemOperation> itemFlux =
+                                AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
+
+                        // This strange-looking buffering / non-overlapping sliding window construct worked around
+                        // stallouts in the client library. I'm not sure why this was necessary (I would have thought
+                        // the client library would work this out itself) but without it the client library stopped
+                        // sending data to Cosmos and items would just back up in memory until the loader crashed due to
+                        // memory exhaustion.
+                        return itemFlux.buffer(submissionBatchSize).flatMap(
+                                batch -> {
+                                    logger.info("Submitting batch " + submissionBatchCounter.incrementAndGet() + " at document counter " + documentCounter.get());
+                                    return executeItemOperationsWithErrorHandling(container, Flux.fromIterable(batch), bulkExecutionOptions);
+                                });
+                    }
+            );
+            responseFlux.blockLast();
+        } else {
+            // Slow but steady non-continuous Flux. This has the disadvantage of not overlapping the Avro processing
+            // with the sending of data to Cosmos. Non-continuous Flux ties up the VM for longer than necessary and
+            // lengthens the time to load data, but currently enjoys the advantage of not crashing with low container
+            // throughput like what is available on serverless Cosmos.
+            for (Path avroPath : avroPaths) {
+                logger.info(String.format("Processing Avro file '%s'...", avroPath));
+
+                Flux<CosmosItemOperation> itemFlux =
+                        AvroReader.itemFluxFromAvroPath(objectMapper, avroPath, ingestArguments, recordCounter, documentCounter);
+
+                for (List<CosmosItemOperation> submissionBatch : itemFlux.buffer(submissionBatchSize).toIterable()) {
+                    executeItemOperationsWithErrorHandling(container, Flux.fromIterable(submissionBatch), bulkExecutionOptions).blockLast();
+                }
+
+                logger.info(String.format("Avro file '%s' processing complete.", avroPath));
+            }
         }
     }
 
-    private static void executeItemOperationsWithErrorHandling(CosmosAsyncContainer container,
-                                                               Flux<CosmosItemOperation> itemOperations) {
+    private static CosmosBulkExecutionOptions buildCosmosBulkExecutionOptions(IngestArguments ingestArguments) {
+        // No idea what this bridge stuff is about, most of the getters/setters are not public on CosmosBulkExecutionOptions.
+        ImplementationBridgeHelpers.CosmosBulkExecutionOptionsHelper.CosmosBulkExecutionOptionsAccessor accessor =
+                ImplementationBridgeHelpers.CosmosBulkExecutionOptionsHelper.getCosmosBulkExecutionOptionsAccessor();
+        CosmosBulkExecutionOptions bulkExecutionOptions = new CosmosBulkExecutionOptions();
+
+        bulkExecutionOptions = accessor.setMaxMicroBatchSize(bulkExecutionOptions, ingestArguments.getMaxMicroBatchSize());
+        bulkExecutionOptions = accessor.setTargetedMicroBatchRetryRate(bulkExecutionOptions, ingestArguments.getMinMicroBatchRetryRate(), ingestArguments.getMaxMicroBatchRetryRate());
+
+        // And this one is public for some reason...
+        bulkExecutionOptions.setMaxMicroBatchConcurrency(ingestArguments.getMaxMicroBatchConcurrency());
+        return bulkExecutionOptions;
+    }
+
+    private static Flux<CosmosBulkItemResponse> executeItemOperationsWithErrorHandling(CosmosAsyncContainer container,
+                                                                                       Flux<CosmosItemOperation> itemOperations,
+                                                                                       CosmosBulkExecutionOptions cosmosBulkExecutionOptions) {
         // Only the first and last few lines are the "execute" bits, all the rest is error handling iff something goes wrong.
-        container.executeBulkOperations(itemOperations).flatMap(operationResponse -> {
+        return container.executeBulkOperations(itemOperations, cosmosBulkExecutionOptions).flatMap(operationResponse -> {
             CosmosBulkItemResponse itemResponse = operationResponse.getResponse();
             CosmosItemOperation itemOperation = operationResponse.getOperation();
 
@@ -76,8 +137,7 @@ public class CosmosIngest {
             } else {
                 return Mono.just(itemResponse);
             }
-
-        }).blockLast();
+        });
     }
 
     private static void configureLogging() {
